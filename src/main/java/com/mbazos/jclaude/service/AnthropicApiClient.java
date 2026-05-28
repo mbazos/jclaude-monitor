@@ -61,6 +61,18 @@ public class AnthropicApiClient {
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+        // Check HTTP status before inspecting headers — error responses won't have quota headers
+        int status = response.statusCode();
+        if (status == 401 || status == 403) {
+            return new QuotaResult.Unavailable("Invalid API key (HTTP " + status + ")");
+        }
+        if (status == 429) {
+            return new QuotaResult.Unavailable("Rate limited — try again later (HTTP 429)");
+        }
+        if (status >= 500) {
+            return new QuotaResult.Unavailable("Anthropic API unavailable (HTTP " + status + ")");
+        }
+
         // Plan type detection from response headers
         if (response.headers().firstValue("anthropic-ratelimit-unified-5h-utilization").isPresent()) {
             return parseStandard(response);

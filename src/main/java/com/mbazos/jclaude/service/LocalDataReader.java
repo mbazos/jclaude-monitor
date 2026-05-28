@@ -24,6 +24,9 @@ import java.util.Optional;
  */
 public class LocalDataReader {
 
+    /** Combined result of a single stats-cache.json parse. */
+    record LocalDataResult(LocalStats stats, Map<String, long[]> monthlyTokens) {}
+
     private static final Path CLAUDE_DIR   = Path.of(System.getProperty("user.home"), ".claude");
     private static final Path SESSIONS_DIR = CLAUDE_DIR.resolve("sessions");
     private static final Path STATS_CACHE  = CLAUDE_DIR.resolve("stats-cache.json");
@@ -32,13 +35,43 @@ public class LocalDataReader {
     private static final long ACTIVE_SESSION_WINDOW_MS = 5 * 60 * 1_000;
 
     /**
-     * Reads current sessions and daily/total stats from the Claude data directory.
-     * Degrades gracefully if files are missing or unparseable.
+     * Parses stats-cache.json exactly once and returns both {@link LocalStats} and
+     * the per-model monthly token breakdown.  Prefer this over calling
+     * {@link #readStats()} and {@link #readMonthlyTokens()} separately.
      */
-    public LocalStats readStats() {
+    public LocalDataResult readAll() {
         List<SessionInfo> activeSessions = readActiveSessions();
         Object statsRoot = parseFile(STATS_CACHE);
+        LocalStats stats = buildLocalStats(activeSessions, statsRoot);
+        Map<String, long[]> monthlyTokens = buildMonthlyTokens(statsRoot);
+        return new LocalDataResult(stats, monthlyTokens);
+    }
 
+    /**
+     * Reads current sessions and daily/total stats from the Claude data directory.
+     * Degrades gracefully if files are missing or unparseable.
+     * Delegates to {@link #readAll()} — prefer that method to avoid double-parsing.
+     */
+    public LocalStats readStats() {
+        return readAll().stats();
+    }
+
+    /**
+     * Returns per-model token breakdown for the current month.
+     * model name → [inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens]
+     * Note: stats-cache.json stores only a single total token count per model per day,
+     * so the total is placed in inputTokens and the rest are 0.
+     * Delegates to {@link #readAll()} — prefer that method to avoid double-parsing.
+     */
+    public Map<String, long[]> readMonthlyTokens() {
+        return readAll().monthlyTokens();
+    }
+
+    // -------------------------------------------------------------------------
+    // Private — stats-cache.json extraction
+    // -------------------------------------------------------------------------
+
+    private LocalStats buildLocalStats(List<SessionInfo> activeSessions, Object statsRoot) {
         DailyStats today = null;
         long totalSessions = 0;
         long totalMessages = 0;
@@ -75,14 +108,7 @@ public class LocalDataReader {
         return new LocalStats(activeSessions, today, totalSessions, totalMessages, Instant.now());
     }
 
-    /**
-     * Returns per-model token breakdown for the current month.
-     * model name → [inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens]
-     * Note: stats-cache.json stores only a single total token count per model per day,
-     * so the total is placed in inputTokens and the rest are 0.
-     */
-    public Map<String, long[]> readMonthlyTokens() {
-        Object statsRoot = parseFile(STATS_CACHE);
+    private Map<String, long[]> buildMonthlyTokens(Object statsRoot) {
         Map<String, long[]> result = new HashMap<>();
         if (statsRoot == null) return result;
 

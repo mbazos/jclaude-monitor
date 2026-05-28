@@ -3,10 +3,12 @@ package com.mbazos.jclaude.service;
 import com.mbazos.jclaude.model.LocalStats;
 import com.mbazos.jclaude.model.PollResult;
 import com.mbazos.jclaude.model.QuotaResult;
+import com.mbazos.jclaude.service.LocalDataReader.LocalDataResult;
 
 import javax.swing.SwingUtilities;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -23,21 +25,19 @@ public class DataPoller {
     private final ScheduledExecutorService scheduler;
     private volatile AnthropicApiClient apiClient;  // null if LOCAL_ONLY mode
     private final LocalDataReader localReader;
-    private volatile BiConsumer<LocalStats, PollResult> resultHandler;
+    private final BiConsumer<LocalStats, PollResult> resultHandler;
     private volatile double budgetUSD = 0.0;
 
-    public DataPoller(AnthropicApiClient apiClient, LocalDataReader localReader) {
-        this.apiClient   = apiClient;
-        this.localReader = localReader;
-        this.scheduler   = Executors.newSingleThreadScheduledExecutor(r -> {
+    public DataPoller(AnthropicApiClient apiClient, LocalDataReader localReader,
+                      BiConsumer<LocalStats, PollResult> resultHandler) {
+        this.apiClient      = apiClient;
+        this.localReader    = localReader;
+        this.resultHandler  = Objects.requireNonNull(resultHandler, "resultHandler must not be null");
+        this.scheduler      = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "quota-poller");
             t.setDaemon(true);
             return t;
         });
-    }
-
-    public void setResultHandler(BiConsumer<LocalStats, PollResult> handler) {
-        this.resultHandler = handler;
     }
 
     public void setBudget(double budgetUSD) {
@@ -74,21 +74,23 @@ public class DataPoller {
     // -------------------------------------------------------------------------
 
     private void doPoll() {
-        LocalStats stats = localReader.readStats();
-        final PollResult pollResult = buildPollResult();
-
-        BiConsumer<LocalStats, PollResult> handler = resultHandler;
-        if (handler != null) {
-            SwingUtilities.invokeLater(() -> handler.accept(stats, pollResult));
+        try {
+            LocalDataResult data = localReader.readAll();
+            PollResult pollResult = buildPollResult(data.monthlyTokens());
+            final LocalStats stats = data.stats();
+            SwingUtilities.invokeLater(() -> resultHandler.accept(stats, pollResult));
+        } catch (Exception e) {
+            PollResult failure = new PollResult.Failure(
+                    "Internal error: " + e.getMessage(), e, Instant.now());
+            SwingUtilities.invokeLater(() -> resultHandler.accept(null, failure));
         }
     }
 
-    private PollResult buildPollResult() {
+    private PollResult buildPollResult(Map<String, long[]> monthlyTokens) {
         AnthropicApiClient client = apiClient;
         double currentBudget = budgetUSD;
         if (client != null) {
             try {
-                Map<String, long[]> monthlyTokens = localReader.readMonthlyTokens();
                 QuotaResult quota = client.probe(monthlyTokens, currentBudget);
                 return new PollResult.Success(quota);
             } catch (Exception e) {
