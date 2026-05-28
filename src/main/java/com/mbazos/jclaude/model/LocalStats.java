@@ -9,4 +9,8 @@ public record LocalStats(
         long totalSessions,
         long totalMessages,
         Instant lastRead
-) {}
+) {
+    public LocalStats {
+        activeSessions = List.copyOf(activeSessions);
+    }
+}

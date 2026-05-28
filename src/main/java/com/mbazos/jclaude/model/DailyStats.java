@@ -6,4 +6,9 @@ public record DailyStats(
         int sessionCount,
         int toolCallCount,
         long totalTokens     // sum across all models for this day
-) {}
+) {
+    public DailyStats {
+        if (date != null && !date.matches("\\d{4}-\\d{2}-\\d{2}"))
+            throw new IllegalArgumentException("date must be YYYY-MM-DD, got: " + date);
+    }
+}

@@ -1,6 +1,7 @@
 package com.mbazos.jclaude.model;
 
 import java.time.Instant;
+import java.util.OptionalDouble;
 
 public sealed interface QuotaResult permits
         QuotaResult.Standard, QuotaResult.EnterpriseTokens,
@@ -26,7 +27,7 @@ public sealed interface QuotaResult permits
             long cacheReadTokens,
             long cacheCreateTokens,
             double estimatedCostUSD,
-            double budgetUSD,          // from user config; 0.0 if not set
+            OptionalDouble budgetUSD,  // empty if not configured by user
             String month,              // e.g. "MAY 2026"
             Instant lastSynced
     ) implements QuotaResult {}

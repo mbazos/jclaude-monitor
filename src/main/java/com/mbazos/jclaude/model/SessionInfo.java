@@ -1,10 +1,11 @@
 package com.mbazos.jclaude.model;
 
 import java.time.Instant;
+import java.util.Optional;
 
 public record SessionInfo(
         String sessionId,
         String cwd,
-        String status,    // "busy", "idle", or null
+        Optional<String> status,    // "busy" or "idle"
         Instant startedAt
 ) {}
