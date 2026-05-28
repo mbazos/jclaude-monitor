@@ -32,6 +32,8 @@ final class CryptoUtil {
     private static final int IV_LENGTH_BYTES    = 12;
     private static final int GCM_TAG_BITS       = 128;
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private CryptoUtil() {}
 
     // -------------------------------------------------------------------------
@@ -45,7 +47,7 @@ final class CryptoUtil {
      */
     static String encrypt(String plaintext) throws Exception {
         byte[] iv = new byte[IV_LENGTH_BYTES];
-        SecureRandom.getInstanceStrong().nextBytes(iv);
+        SECURE_RANDOM.nextBytes(iv);
 
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, deriveKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
@@ -66,6 +68,10 @@ final class CryptoUtil {
      */
     static String decrypt(String encoded) throws Exception {
         byte[] ivPlusCipher = Base64.getDecoder().decode(encoded);
+
+        if (ivPlusCipher.length <= IV_LENGTH_BYTES) {
+            throw new IllegalArgumentException("Encoded data too short to contain IV (corrupted config?)");
+        }
 
         byte[] iv         = new byte[IV_LENGTH_BYTES];
         byte[] ciphertext = new byte[ivPlusCipher.length - IV_LENGTH_BYTES];
@@ -104,6 +110,6 @@ final class CryptoUtil {
     private static byte[] buildSalt() throws Exception {
         String username = System.getProperty("user.name");
         String hostname = InetAddress.getLocalHost().getHostName();
-        return (username + hostname).getBytes(StandardCharsets.UTF_8);
+        return (username + "@" + hostname).getBytes(StandardCharsets.UTF_8);
     }
 }

@@ -77,7 +77,7 @@ public final class AppConfig {
      * Removes the encrypted API key property, effectively switching the
      * application to LOCAL_ONLY mode.
      */
-    public static void clearApiKey() throws Exception {
+    public static void clearApiKey() throws IOException {
         Properties props = load();
         props.remove(KEY_API_KEY);
         save(props);
@@ -99,6 +99,7 @@ public final class AppConfig {
             }
             return Double.parseDouble(value.trim());
         } catch (Exception e) {
+            System.err.println("[jclaude-monitor] Failed to read config value: " + e.getMessage());
             return 0.0;
         }
     }
@@ -107,13 +108,9 @@ public final class AppConfig {
      * Persists the monthly budget (in USD) to config.properties.
      */
     public static void saveBudget(double budgetUSD) throws IOException {
-        try {
-            Properties props = load();
-            props.setProperty(KEY_BUDGET, String.valueOf(budgetUSD));
-            save(props);
-        } catch (IOException e) {
-            throw e;
-        }
+        Properties props = load();
+        props.setProperty(KEY_BUDGET, String.format("%.2f", budgetUSD));
+        save(props);
     }
 
     // -------------------------------------------------------------------------
@@ -155,6 +152,7 @@ public final class AppConfig {
                     Integer.parseInt(sh.trim())
             };
         } catch (Exception e) {
+            System.err.println("[jclaude-monitor] Failed to read config value: " + e.getMessage());
             return null;
         }
     }
@@ -167,6 +165,7 @@ public final class AppConfig {
             Properties props = load();
             return Boolean.parseBoolean(props.getProperty(KEY_ALWAYS_ON_TOP, "false"));
         } catch (Exception e) {
+            System.err.println("[jclaude-monitor] Failed to read config value: " + e.getMessage());
             return false;
         }
     }
