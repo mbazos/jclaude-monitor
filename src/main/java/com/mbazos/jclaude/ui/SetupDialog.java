@@ -132,7 +132,9 @@ public class SetupDialog extends JDialog {
         testButton.addActionListener(e -> runTest());
 
         saveButton.addActionListener(e -> {
-            String raw = new String(keyField.getPassword()).trim();
+            char[] chars = keyField.getPassword();
+            String raw = new String(chars).trim();
+            java.util.Arrays.fill(chars, '\0');
             if (!raw.startsWith("sk-ant-")) {
                 statusLabel.setForeground(RED);
                 statusLabel.setText("Key must start with sk-ant-");
@@ -165,7 +167,9 @@ public class SetupDialog extends JDialog {
     // -------------------------------------------------------------------------
 
     private void runTest() {
-        String raw = new String(keyField.getPassword()).trim();
+        char[] chars = keyField.getPassword();
+        String raw = new String(chars).trim();
+        java.util.Arrays.fill(chars, '\0');
         if (raw.isBlank()) {
             statusLabel.setForeground(RED);
             statusLabel.setText("Enter an API key first.");

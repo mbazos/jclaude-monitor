@@ -74,8 +74,12 @@ public class QuotaSectionPanel extends JPanel {
                         cardLayout.show(this, CARD_ENTERPRISE_BUDGET);
                     }
                     case QuotaResult.Unavailable u -> {
-                        unavailableLabel.setText(" " + u.reason());
-                        cardLayout.show(this, CARD_UNAVAILABLE);
+                        if ("No API key configured".equals(u.reason())) {
+                            cardLayout.show(this, CARD_NONE);
+                        } else {
+                            unavailableLabel.setText(" " + u.reason());
+                            cardLayout.show(this, CARD_UNAVAILABLE);
+                        }
                     }
                 }
             }

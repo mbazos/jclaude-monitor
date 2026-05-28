@@ -80,6 +80,7 @@ public class ClaudeProgressBar extends JComponent {
     // Size hints
     // -------------------------------------------------------------------------
 
+    @Override public boolean   isOpaque()          { return true; }
     @Override public Dimension getPreferredSize() { return new Dimension(300, 22); }
     @Override public Dimension getMinimumSize()   { return new Dimension(100, 16); }
 
