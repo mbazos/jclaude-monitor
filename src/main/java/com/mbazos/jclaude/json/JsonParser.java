@@ -150,6 +150,8 @@ public class JsonParser {
                         }
                         String hex = input.substring(pos, pos + 4);
                         try {
+                            // Note: does not handle surrogate pairs (\uD800-\uDFFF);
+                            // sufficient for ~/.claude/ file paths and identifiers
                             sb.append((char) Integer.parseInt(hex, 16));
                         } catch (NumberFormatException e) {
                             throw new IllegalArgumentException(
