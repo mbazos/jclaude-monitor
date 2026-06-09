@@ -87,7 +87,7 @@ public class MonitorFrame extends JFrame {
     // -------------------------------------------------------------------------
 
     private void buildUi() {
-        setMinimumSize(new Dimension(360, 200));
+        setMinimumSize(new Dimension(360, 300));
         getContentPane().setBackground(BG_DARK);
         getContentPane().setLayout(new BorderLayout());
         getContentPane().add(webUsagePanel, BorderLayout.CENTER);

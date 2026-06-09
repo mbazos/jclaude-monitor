@@ -7,6 +7,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.CardLayout;
+import java.awt.Dimension;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -136,12 +137,19 @@ public class WebUsagePanel extends JPanel {
         JLabel titleLabel = new JLabel(title);
         titleLabel.setFont(MONO_BOLD);
         titleLabel.setForeground(ACCENT);
+        titleLabel.setAlignmentX(LEFT_ALIGNMENT);
+        // Pin label heights so extra vertical space goes to the bar, not the labels
+        titleLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, titleLabel.getPreferredSize().height));
         section.add(titleLabel);
+
+        bar.setAlignmentX(LEFT_ALIGNMENT);
         section.add(bar);
 
         detail.setText(detailDefault);
         detail.setFont(MONO_SMALL);
         detail.setForeground(FG_SECONDARY);
+        detail.setAlignmentX(LEFT_ALIGNMENT);
+        detail.setMaximumSize(new Dimension(Integer.MAX_VALUE, detail.getPreferredSize().height));
         section.add(detail);
     }
 
