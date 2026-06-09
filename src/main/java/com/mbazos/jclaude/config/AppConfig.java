@@ -16,8 +16,8 @@ import java.util.Properties;
  * <p>
  * Property keys:
  * <ul>
- *   <li>{@code apiKey.encrypted}  — Base64-encoded AES-256-GCM ciphertext</li>
- *   <li>{@code budget.monthly}    — decimal string, e.g. "500.00"</li>
+ *   <li>{@code session.key.encrypted} — Base64-encoded AES-256-GCM ciphertext of the sessionKey cookie</li>
+ *   <li>{@code session.orgId} — plain-text organisation UUID</li>
  *   <li>{@code window.x}, {@code window.y}, {@code window.w}, {@code window.h} — integers</li>
  *   <li>{@code window.alwaysOnTop} — "true" / "false"</li>
  * </ul>
@@ -29,13 +29,13 @@ public final class AppConfig {
     private static final Path CONFIG_FILE = CONFIG_DIR.resolve("config.properties");
 
     // Property key constants
-    private static final String KEY_API_KEY       = "apiKey.encrypted";
-    private static final String KEY_BUDGET        = "budget.monthly";
-    private static final String KEY_WINDOW_X      = "window.x";
-    private static final String KEY_WINDOW_Y      = "window.y";
-    private static final String KEY_WINDOW_W      = "window.w";
-    private static final String KEY_WINDOW_H      = "window.h";
-    private static final String KEY_ALWAYS_ON_TOP = "window.alwaysOnTop";
+    private static final String KEY_SESSION_KEY     = "session.key.encrypted";
+    private static final String KEY_SESSION_ORG_ID  = "session.orgId";
+    private static final String KEY_WINDOW_X        = "window.x";
+    private static final String KEY_WINDOW_Y        = "window.y";
+    private static final String KEY_WINDOW_W        = "window.w";
+    private static final String KEY_WINDOW_H        = "window.h";
+    private static final String KEY_ALWAYS_ON_TOP   = "window.alwaysOnTop";
 
     private AppConfig() {}
 
@@ -49,67 +49,58 @@ public final class AppConfig {
     }
 
     // -------------------------------------------------------------------------
-    // API key
+    // Session key (claude.ai browser session)
     // -------------------------------------------------------------------------
 
-    /**
-     * Returns the decrypted API key, or {@code null} if none is stored.
-     */
-    public static String loadApiKey() throws Exception {
+    /** Returns the decrypted claude.ai session key, or {@code null} if none is stored. */
+    public static String loadSessionKey() throws Exception {
         Properties props = load();
-        String encrypted = props.getProperty(KEY_API_KEY);
-        if (encrypted == null || encrypted.isBlank()) {
-            return null;
-        }
+        String encrypted = props.getProperty(KEY_SESSION_KEY);
+        if (encrypted == null || encrypted.isBlank()) return null;
         return CryptoUtil.decrypt(encrypted);
     }
 
-    /**
-     * Encrypts {@code rawKey} and persists it in config.properties.
-     */
-    public static void saveApiKey(String rawKey) throws Exception {
+    /** Encrypts {@code rawKey} and persists it in config.properties. */
+    public static void saveSessionKey(String rawKey) throws Exception {
         Properties props = load();
-        props.setProperty(KEY_API_KEY, CryptoUtil.encrypt(rawKey));
+        props.setProperty(KEY_SESSION_KEY, CryptoUtil.encrypt(rawKey));
         save(props);
     }
 
-    /**
-     * Removes the encrypted API key property, effectively switching the
-     * application to LOCAL_ONLY mode.
-     */
-    public static void clearApiKey() throws IOException {
+    /** Removes the stored session key. */
+    public static void clearSessionKey() throws IOException {
         Properties props = load();
-        props.remove(KEY_API_KEY);
+        props.remove(KEY_SESSION_KEY);
         save(props);
     }
 
     // -------------------------------------------------------------------------
-    // Budget
+    // Session org ID (plain text, not sensitive)
     // -------------------------------------------------------------------------
 
-    /**
-     * Returns the monthly budget in USD, or {@code 0.0} if not configured.
-     */
-    public static double loadBudget() {
+    /** Returns the stored organisation UUID, or {@code null} if none is stored. */
+    public static String loadSessionOrgId() {
         try {
             Properties props = load();
-            String value = props.getProperty(KEY_BUDGET);
-            if (value == null || value.isBlank()) {
-                return 0.0;
-            }
-            return Double.parseDouble(value.trim());
+            String v = props.getProperty(KEY_SESSION_ORG_ID);
+            return (v != null && !v.isBlank()) ? v.trim() : null;
         } catch (Exception e) {
-            System.err.println("[jclaude-monitor] Failed to read config value: " + e.getMessage());
-            return 0.0;
+            System.err.println("[jclaude-monitor] Failed to read session orgId: " + e.getMessage());
+            return null;
         }
     }
 
-    /**
-     * Persists the monthly budget (in USD) to config.properties.
-     */
-    public static void saveBudget(double budgetUSD) throws IOException {
+    /** Persists the organisation UUID. */
+    public static void saveSessionOrgId(String orgId) throws IOException {
         Properties props = load();
-        props.setProperty(KEY_BUDGET, String.format("%.2f", budgetUSD));
+        props.setProperty(KEY_SESSION_ORG_ID, orgId.trim());
+        save(props);
+    }
+
+    /** Removes the stored organisation UUID. */
+    public static void clearSessionOrgId() throws IOException {
+        Properties props = load();
+        props.remove(KEY_SESSION_ORG_ID);
         save(props);
     }
 

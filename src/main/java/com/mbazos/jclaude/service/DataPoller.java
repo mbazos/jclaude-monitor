@@ -1,13 +1,9 @@
 package com.mbazos.jclaude.service;
 
 import com.mbazos.jclaude.model.LocalStats;
-import com.mbazos.jclaude.model.PollResult;
-import com.mbazos.jclaude.model.QuotaResult;
-import com.mbazos.jclaude.service.LocalDataReader.LocalDataResult;
+import com.mbazos.jclaude.model.WebUsageResult;
 
 import javax.swing.SwingUtilities;
-import java.time.Instant;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -23,46 +19,35 @@ public class DataPoller {
     private static final int POLL_INTERVAL_SECONDS = 60;
 
     private final ScheduledExecutorService scheduler;
-    private volatile AnthropicApiClient apiClient;  // null if LOCAL_ONLY mode
+    private volatile ClaudeWebClient webClient;  // null if no session configured
     private final LocalDataReader localReader;
-    private final BiConsumer<LocalStats, PollResult> resultHandler;
-    private volatile double budgetUSD = 0.0;
+    private final BiConsumer<LocalStats, WebUsageResult> resultHandler;
 
-    public DataPoller(AnthropicApiClient apiClient, LocalDataReader localReader,
-                      BiConsumer<LocalStats, PollResult> resultHandler) {
-        this.apiClient      = apiClient;
-        this.localReader    = localReader;
-        this.resultHandler  = Objects.requireNonNull(resultHandler, "resultHandler must not be null");
-        this.scheduler      = Executors.newSingleThreadScheduledExecutor(r -> {
+    public DataPoller(ClaudeWebClient webClient, LocalDataReader localReader,
+                      BiConsumer<LocalStats, WebUsageResult> resultHandler) {
+        this.webClient     = webClient;
+        this.localReader   = localReader;
+        this.resultHandler = Objects.requireNonNull(resultHandler, "resultHandler must not be null");
+        this.scheduler     = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "quota-poller");
             t.setDaemon(true);
             return t;
         });
     }
 
-    public void setBudget(double budgetUSD) {
-        this.budgetUSD = budgetUSD;
-    }
-
-    /**
-     * Starts 60-second polling with an immediate first poll.
-     */
+    /** Starts 60-second polling with an immediate first poll. */
     public void start() {
         scheduler.scheduleAtFixedRate(this::doPoll, 0, POLL_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
-    /**
-     * Fires an immediate poll without waiting for the 60-second cycle.
-     */
+    /** Fires an immediate poll without waiting for the 60-second cycle. */
     public void refreshNow() {
         scheduler.execute(this::doPoll);
     }
 
-    /**
-     * Updates the API client (e.g. user configured a new API key).
-     */
-    public void updateApiClient(AnthropicApiClient newClient) {
-        this.apiClient = newClient;
+    /** Updates the web client (e.g. user configured a new session key). */
+    public void updateWebClient(ClaudeWebClient newClient) {
+        this.webClient = newClient;
     }
 
     public void shutdown() {
@@ -74,30 +59,27 @@ public class DataPoller {
     // -------------------------------------------------------------------------
 
     private void doPoll() {
+        LocalStats stats;
         try {
-            LocalDataResult data = localReader.readAll();
-            PollResult pollResult = buildPollResult(data.monthlyTokens());
-            final LocalStats stats = data.stats();
-            SwingUtilities.invokeLater(() -> resultHandler.accept(stats, pollResult));
+            stats = localReader.readStats();
         } catch (Exception e) {
-            PollResult failure = new PollResult.Failure(
-                    "Internal error: " + e.getMessage(), e, Instant.now());
-            SwingUtilities.invokeLater(() -> resultHandler.accept(null, failure));
+            stats = null;
         }
-    }
 
-    private PollResult buildPollResult(Map<String, long[]> monthlyTokens) {
-        AnthropicApiClient client = apiClient;
-        double currentBudget = budgetUSD;
-        if (client != null) {
+        ClaudeWebClient snap = webClient;
+        WebUsageResult usage;
+        if (snap != null) {
             try {
-                QuotaResult quota = client.probe(monthlyTokens, currentBudget);
-                return new PollResult.Success(quota);
+                usage = snap.fetch();
             } catch (Exception e) {
-                return new PollResult.Failure(e.getMessage(), e, Instant.now());
+                usage = new WebUsageResult.Unavailable("Fetch error: " + e.getMessage());
             }
         } else {
-            return new PollResult.Success(new QuotaResult.Unavailable("No API key configured"));
+            usage = new WebUsageResult.Unavailable("No session configured");
         }
+
+        final LocalStats finalStats = stats;
+        final WebUsageResult finalUsage = usage;
+        SwingUtilities.invokeLater(() -> resultHandler.accept(finalStats, finalUsage));
     }
 }

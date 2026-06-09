@@ -66,7 +66,7 @@ public class ClaudeProgressBar extends JComponent {
         g2.drawRect(0, 0, w - 1, h - 1);
 
         // Centred label
-        g2.setFont(MONO_PLAIN);
+        g2.setFont(MONO_PLAIN.deriveFont(120f));
         g2.setColor(FG_PRIMARY);
         FontMetrics fm = g2.getFontMetrics();
         int tx = (w - fm.stringWidth(label)) / 2;
@@ -81,8 +81,8 @@ public class ClaudeProgressBar extends JComponent {
     // -------------------------------------------------------------------------
 
     @Override public boolean   isOpaque()          { return true; }
-    @Override public Dimension getPreferredSize() { return new Dimension(300, 22); }
-    @Override public Dimension getMinimumSize()   { return new Dimension(100, 16); }
+    @Override public Dimension getPreferredSize() { return new Dimension(300, 140); }
+    @Override public Dimension getMinimumSize()   { return new Dimension(100, 140); }
 
     // -------------------------------------------------------------------------
     // Helpers
