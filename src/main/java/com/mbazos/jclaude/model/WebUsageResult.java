@@ -6,13 +6,14 @@ public sealed interface WebUsageResult
         permits WebUsageResult.Available, WebUsageResult.Unavailable {
 
     record Available(
-            double fiveHourUtil,       // 0–100 percentage
+            Double fiveHourUtil,       // 0–100 percentage, null if not applicable
             Instant fiveHourReset,
-            double sevenDayUtil,       // 0–100 percentage
+            Double sevenDayUtil,       // 0–100 percentage, null if not applicable
             Instant sevenDayReset,
             boolean extraUsageEnabled,
-            int monthlyLimitUsd,
-            double usedCreditsUsd,
+            double extraUsageUtil,     // 0–100 percentage from extra_usage.utilization
+            double monthlyLimitCents,  // raw value from API (divide by 100 for dollars)
+            double usedCreditsCents,   // raw value from API (divide by 100 for dollars)
             Instant lastSynced
     ) implements WebUsageResult {}
 

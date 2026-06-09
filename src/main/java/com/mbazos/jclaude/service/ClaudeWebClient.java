@@ -64,6 +64,9 @@ public class ClaudeWebClient {
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
         int status = response.statusCode();
+        System.err.println("[ClaudeWebClient] HTTP " + status + " from " + url);
+        System.err.println("[ClaudeWebClient] Response body: " + response.body());
+
         if (status == 401 || status == 403) {
             return new WebUsageResult.Unavailable(
                     "Session expired or invalid (HTTP " + status + ")");
@@ -88,27 +91,40 @@ public class ClaudeWebClient {
             Double sevenDUtil     = JsonPath.getDouble(parsed, "seven_day", "utilization");
             String sevenDResetStr = JsonPath.getString(parsed, "seven_day", "resets_at");
 
-            // resets_at can legitimately be null when the window hasn't been used yet
-            if (fiveHUtil == null || sevenDUtil == null) {
+            Boolean extraEnabled  = JsonPath.getBoolean(parsed, "extra_usage", "is_enabled");
+            Double  extraUtil     = JsonPath.getDouble(parsed,  "extra_usage", "utilization");
+            Double  monthlyLimit  = JsonPath.getDouble(parsed,  "extra_usage", "monthly_limit");
+            Double  usedCredits   = JsonPath.getDouble(parsed,  "extra_usage", "used_credits");
+
+            boolean hasWindows     = fiveHUtil != null || sevenDUtil != null;
+            boolean hasExtraUsage  = Boolean.TRUE.equals(extraEnabled);
+
+            System.err.println("[ClaudeWebClient] fiveHUtil=" + fiveHUtil
+                    + " sevenDUtil=" + sevenDUtil
+                    + " extraEnabled=" + extraEnabled
+                    + " extraUtil=" + extraUtil
+                    + " monthlyLimit=" + monthlyLimit
+                    + " usedCredits=" + usedCredits
+                    + " hasWindows=" + hasWindows
+                    + " hasExtraUsage=" + hasExtraUsage);
+
+            if (!hasWindows && !hasExtraUsage) {
                 return new WebUsageResult.Unavailable("Unexpected response format");
             }
 
             // resets_at uses "+00:00" offset notation, not "Z" — requires OffsetDateTime
-            Instant fiveHReset  = parseInstant(fiveHResetStr);
-            Instant sevenDReset = parseInstant(sevenDResetStr);
-
-            Boolean extraEnabled  = JsonPath.getBoolean(parsed, "extra_usage", "is_enabled");
-            Long    monthlyLimit  = JsonPath.getLong(parsed,    "extra_usage", "monthly_limit");
-            Double  usedCredits   = JsonPath.getDouble(parsed,  "extra_usage", "used_credits");
+            Instant fiveHReset  = fiveHUtil  != null ? parseInstant(fiveHResetStr)  : null;
+            Instant sevenDReset = sevenDUtil != null ? parseInstant(sevenDResetStr) : null;
 
             return new WebUsageResult.Available(
                     fiveHUtil,
                     fiveHReset,
                     sevenDUtil,
                     sevenDReset,
-                    Boolean.TRUE.equals(extraEnabled),
-                    monthlyLimit != null ? monthlyLimit.intValue() : 0,
-                    usedCredits  != null ? usedCredits             : 0.0,
+                    hasExtraUsage,
+                    extraUtil     != null ? extraUtil     : 0.0,
+                    monthlyLimit  != null ? monthlyLimit  : 0.0,
+                    usedCredits   != null ? usedCredits   : 0.0,
                     Instant.now()
             );
         } catch (Exception e) {

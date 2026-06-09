@@ -284,9 +284,17 @@ public class MonitorFrame extends JFrame {
                 WebUsageResult result = client.fetch();
                 success = result instanceof WebUsageResult.Available;
                 outcome = switch (result) {
-                    case WebUsageResult.Available a ->
-                            String.format("Connected — 5h: %.1f%%, 7d: %.1f%%",
+                    case WebUsageResult.Available a -> {
+                        if (a.fiveHourUtil() != null && a.sevenDayUtil() != null) {
+                            yield String.format("Connected — 5h: %.1f%%, 7d: %.1f%%",
                                     a.fiveHourUtil(), a.sevenDayUtil());
+                        } else if (a.extraUsageEnabled()) {
+                            yield String.format("Connected — Budget: %.1f%% used",
+                                    a.extraUsageUtil());
+                        } else {
+                            yield "Connected";
+                        }
+                    }
                     case WebUsageResult.Unavailable u -> u.reason();
                 };
                 if (success) {

@@ -13,9 +13,11 @@ import java.time.Instant;
 import static com.mbazos.jclaude.ui.Theme.*;
 
 /**
- * Displays 5-hour and 7-day claude.ai usage obtained from the web API.
- * Uses {@link CardLayout} to switch between an "available" card (bars + reset
- * labels) and an "unavailable" card (muted reason label).
+ * Displays claude.ai usage obtained from the web API.
+ * Shows 5-hour and 7-day windows when available (personal accounts), and/or
+ * a monthly budget section when extra_usage is enabled (enterprise accounts).
+ * Uses {@link CardLayout} to switch between an "available" card and an
+ * "unavailable" card (muted reason label).
  */
 public class WebUsagePanel extends JPanel {
 
@@ -24,11 +26,22 @@ public class WebUsagePanel extends JPanel {
 
     private final CardLayout cardLayout = new CardLayout();
 
-    // Available card widgets
+    // Section panels (shown/hidden based on account type)
+    private final JPanel fiveHourSection   = new JPanel();
+    private final JPanel sevenDaySection   = new JPanel();
+    private final JPanel extraUsageSection = new JPanel();
+
+    // 5-hour widgets
     private final ClaudeProgressBar fiveHourBar   = new ClaudeProgressBar();
-    private final JLabel             fiveHourReset = new JLabel();
+    private final JLabel            fiveHourReset = new JLabel();
+
+    // 7-day widgets
     private final ClaudeProgressBar sevenDayBar   = new ClaudeProgressBar();
-    private final JLabel             sevenDayReset = new JLabel();
+    private final JLabel            sevenDayReset = new JLabel();
+
+    // Monthly budget widgets
+    private final ClaudeProgressBar extraUsageBar    = new ClaudeProgressBar();
+    private final JLabel            extraUsageDetail = new JLabel();
 
     // Unavailable card
     private final JLabel unavailableLabel = new JLabel();
@@ -44,7 +57,6 @@ public class WebUsagePanel extends JPanel {
         add(buildAvailableCard(), CARD_AVAILABLE);
         add(buildUnavailableCard(), CARD_UNAVAILABLE);
 
-        // Default to "no session configured" state
         unavailableLabel.setText(" No session key — Settings → Claude.ai Session…");
         cardLayout.show(this, CARD_UNAVAILABLE);
     }
@@ -57,14 +69,34 @@ public class WebUsagePanel extends JPanel {
     public void update(WebUsageResult result) {
         switch (result) {
             case WebUsageResult.Available a -> {
-                // Bar expects 0.0–1.0; web API returns 0–100
-                fiveHourBar.setValue(a.fiveHourUtil() / 100.0);
-                fiveHourBar.setLabel((int) a.fiveHourUtil() + "%");
-                fiveHourReset.setText(formatTimeUntil(a.fiveHourReset()));
+                boolean hasFiveHour  = a.fiveHourUtil()  != null;
+                boolean hasSevenDay  = a.sevenDayUtil()  != null;
+                boolean hasExtraUsage = a.extraUsageEnabled();
 
-                sevenDayBar.setValue(a.sevenDayUtil() / 100.0);
-                sevenDayBar.setLabel((int) a.sevenDayUtil() + "%");
-                sevenDayReset.setText(formatTimeUntil(a.sevenDayReset()));
+                fiveHourSection.setVisible(hasFiveHour);
+                if (hasFiveHour) {
+                    fiveHourBar.setValue(a.fiveHourUtil() / 100.0);
+                    fiveHourBar.setLabel((int) (double) a.fiveHourUtil() + "%");
+                    fiveHourReset.setText(formatTimeUntil(a.fiveHourReset()));
+                }
+
+                sevenDaySection.setVisible(hasSevenDay);
+                if (hasSevenDay) {
+                    sevenDayBar.setValue(a.sevenDayUtil() / 100.0);
+                    sevenDayBar.setLabel((int) (double) a.sevenDayUtil() + "%");
+                    sevenDayReset.setText(formatTimeUntil(a.sevenDayReset()));
+                }
+
+                extraUsageSection.setVisible(hasExtraUsage);
+                if (hasExtraUsage) {
+                    extraUsageBar.setValue(a.extraUsageUtil() / 100.0);
+                    extraUsageBar.setLabel(String.format("%.1f%%", a.extraUsageUtil()));
+                    double used      = a.usedCreditsCents()   / 100.0;
+                    double limit     = a.monthlyLimitCents()  / 100.0;
+                    double remaining = limit - used;
+                    extraUsageDetail.setText(String.format(
+                            "$%.2f / $%.2f  •  $%.2f remaining", used, limit, remaining));
+                }
 
                 cardLayout.show(this, CARD_AVAILABLE);
             }
@@ -85,17 +117,32 @@ public class WebUsagePanel extends JPanel {
         panel.setBackground(BG_SECTION);
         panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        panel.add(sectionTitle("5-HOUR WINDOW"));
-        panel.add(fiveHourBar);
-        panel.add(styledLabel(fiveHourReset));
-        panel.add(sectionTitle("7-DAY WINDOW"));
-        panel.add(sevenDayBar);
-        panel.add(styledLabel(sevenDayReset));
+        buildSection(fiveHourSection,   "5-HOUR WINDOW",   fiveHourBar,   fiveHourReset,   "Resets in: —");
+        buildSection(sevenDaySection,   "7-DAY WINDOW",    sevenDayBar,   sevenDayReset,   "Resets in: —");
+        buildSection(extraUsageSection, "MONTHLY BUDGET",  extraUsageBar, extraUsageDetail, "");
 
-        fiveHourReset.setText("Resets in: —");
-        sevenDayReset.setText("Resets in: —");
+        panel.add(fiveHourSection);
+        panel.add(sevenDaySection);
+        panel.add(extraUsageSection);
 
         return panel;
+    }
+
+    private static void buildSection(JPanel section, String title,
+                                     ClaudeProgressBar bar, JLabel detail, String detailDefault) {
+        section.setLayout(new BoxLayout(section, BoxLayout.Y_AXIS));
+        section.setBackground(BG_SECTION);
+
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(MONO_BOLD);
+        titleLabel.setForeground(ACCENT);
+        section.add(titleLabel);
+        section.add(bar);
+
+        detail.setText(detailDefault);
+        detail.setFont(MONO_SMALL);
+        detail.setForeground(FG_SECONDARY);
+        section.add(detail);
     }
 
     private JPanel buildUnavailableCard() {
@@ -125,18 +172,5 @@ public class WebUsagePanel extends JPanel {
         long minutes = d.toMinutesPart();
         if (days > 0) return String.format("Resets in: %dd %dh", days, hours);
         return String.format("Resets in: %dh %dm", hours, minutes);
-    }
-
-    private static JLabel sectionTitle(String text) {
-        JLabel label = new JLabel(text);
-        label.setFont(MONO_BOLD);
-        label.setForeground(ACCENT);
-        return label;
-    }
-
-    private static JLabel styledLabel(JLabel label) {
-        label.setFont(MONO_SMALL);
-        label.setForeground(FG_SECONDARY);
-        return label;
     }
 }

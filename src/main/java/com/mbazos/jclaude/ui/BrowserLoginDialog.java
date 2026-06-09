@@ -202,7 +202,35 @@ public class BrowserLoginDialog extends JDialog {
                         return;
                     }
                     var orgs = await resp.json();
-                    var orgId = Array.isArray(orgs) && orgs.length > 0 ? (orgs[0].uuid || '') : '';
+                    if (!Array.isArray(orgs) || orgs.length === 0) {
+                        window._jcBridge.onError('No organization found in your account.');
+                        return;
+                    }
+
+                    // Probe each org's usage endpoint.
+                    // Prefer an enterprise org (extra_usage.is_enabled = true),
+                    // then the first org with active windows, then orgs[0].
+                    var enterpriseOrgId = '';
+                    var activeOrgId = '';
+                    var fallbackOrgId = orgs[0].uuid || '';
+                    for (var i = 0; i < orgs.length; i++) {
+                        var oid = orgs[i].uuid || '';
+                        if (!oid) continue;
+                        try {
+                            var uResp = await fetch('/api/organizations/' + oid + '/usage');
+                            if (uResp.ok) {
+                                var usage = await uResp.json();
+                                if (!enterpriseOrgId && usage.extra_usage && usage.extra_usage.is_enabled) {
+                                    enterpriseOrgId = oid;
+                                    break;
+                                }
+                                if (!activeOrgId && (usage.five_hour !== null || usage.seven_day !== null)) {
+                                    activeOrgId = oid;
+                                }
+                            }
+                        } catch (e) { /* skip */ }
+                    }
+                    var orgId = enterpriseOrgId || activeOrgId || fallbackOrgId;
                     if (!orgId) {
                         window._jcBridge.onError('No organization found in your account.');
                         return;

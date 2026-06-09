@@ -83,6 +83,7 @@ public class ClaudeProgressBar extends JComponent {
     @Override public boolean   isOpaque()          { return true; }
     @Override public Dimension getPreferredSize() { return new Dimension(300, 140); }
     @Override public Dimension getMinimumSize()   { return new Dimension(100, 140); }
+    @Override public Dimension getMaximumSize()   { return new Dimension(Integer.MAX_VALUE, 140); }
 
     // -------------------------------------------------------------------------
     // Helpers
