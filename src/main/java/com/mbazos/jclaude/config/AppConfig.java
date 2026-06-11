@@ -1,11 +1,14 @@
 package com.mbazos.jclaude.config;
 
+import com.mbazos.jclaude.util.Debug;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Base64;
 import java.util.Properties;
 
 /**
@@ -17,6 +20,7 @@ import java.util.Properties;
  * Property keys:
  * <ul>
  *   <li>{@code session.key.encrypted} — Base64-encoded AES-256-GCM ciphertext of the sessionKey cookie</li>
+ *   <li>{@code crypto.salt} — Base64-encoded random PBKDF2 salt for the session key</li>
  *   <li>{@code session.orgId} — plain-text organisation UUID</li>
  *   <li>{@code window.x}, {@code window.y}, {@code window.w}, {@code window.h} — integers</li>
  *   <li>{@code window.alwaysOnTop} — "true" / "false"</li>
@@ -30,6 +34,7 @@ public final class AppConfig {
 
     // Property key constants
     private static final String KEY_SESSION_KEY     = "session.key.encrypted";
+    private static final String KEY_CRYPTO_SALT     = "crypto.salt";
     private static final String KEY_SESSION_ORG_ID  = "session.orgId";
     private static final String KEY_WINDOW_X        = "window.x";
     private static final String KEY_WINDOW_Y        = "window.y";
@@ -52,18 +57,53 @@ public final class AppConfig {
     // Session key (claude.ai browser session)
     // -------------------------------------------------------------------------
 
-    /** Returns the decrypted claude.ai session key, or {@code null} if none is stored. */
-    public static String loadSessionKey() throws Exception {
-        Properties props = load();
-        String encrypted = props.getProperty(KEY_SESSION_KEY);
+    /**
+     * Returns the decrypted claude.ai session key, or {@code null} if none is
+     * stored or the stored value cannot be decrypted (in which case the dead
+     * ciphertext is removed so the app cleanly starts in a "not logged in" state).
+     * <p>
+     * Installs written before the salt was stored ({@code crypto.salt} absent)
+     * are migrated transparently: the key is decrypted with the legacy
+     * machine-derived salt and re-encrypted with a fresh random one.
+     */
+    public static String loadSessionKey() {
+        Properties props;
+        String encrypted;
+        try {
+            props = load();
+            encrypted = props.getProperty(KEY_SESSION_KEY);
+        } catch (Exception e) {
+            Debug.warn("jclaude-monitor", "Failed to read config: " + e.getMessage());
+            return null;
+        }
         if (encrypted == null || encrypted.isBlank()) return null;
-        return CryptoUtil.decrypt(encrypted);
+
+        String storedSalt = props.getProperty(KEY_CRYPTO_SALT);
+        try {
+            if (storedSalt != null && !storedSalt.isBlank()) {
+                return CryptoUtil.decrypt(encrypted, Base64.getDecoder().decode(storedSalt.trim()));
+            }
+            // Pre-salt install: decrypt with the legacy salt, re-encrypt with a new one.
+            String plaintext = CryptoUtil.decrypt(encrypted, CryptoUtil.legacySalt());
+            saveSessionKey(plaintext);
+            return plaintext;
+        } catch (Exception e) {
+            Debug.warn("jclaude-monitor", "Stored session key could not be decrypted"
+                    + " — clearing it; please log in again (" + e.getMessage() + ")");
+            try {
+                clearSessionKey();
+            } catch (IOException io) {
+                Debug.warn("jclaude-monitor", "Failed to clear dead session key: " + io.getMessage());
+            }
+            return null;
+        }
     }
 
     /** Encrypts {@code rawKey} and persists it in config.properties. */
     public static void saveSessionKey(String rawKey) throws Exception {
         Properties props = load();
-        props.setProperty(KEY_SESSION_KEY, CryptoUtil.encrypt(rawKey));
+        byte[] salt = loadOrCreateSalt(props);
+        props.setProperty(KEY_SESSION_KEY, CryptoUtil.encrypt(rawKey, salt));
         save(props);
     }
 
@@ -85,7 +125,7 @@ public final class AppConfig {
             String v = props.getProperty(KEY_SESSION_ORG_ID);
             return (v != null && !v.isBlank()) ? v.trim() : null;
         } catch (Exception e) {
-            System.err.println("[jclaude-monitor] Failed to read session orgId: " + e.getMessage());
+            Debug.warn("jclaude-monitor", "Failed to read session orgId: " + e.getMessage());
             return null;
         }
     }
@@ -143,7 +183,7 @@ public final class AppConfig {
                     Integer.parseInt(sh.trim())
             };
         } catch (Exception e) {
-            System.err.println("[jclaude-monitor] Failed to read config value: " + e.getMessage());
+            Debug.warn("jclaude-monitor", "Failed to read config value: " + e.getMessage());
             return null;
         }
     }
@@ -156,7 +196,7 @@ public final class AppConfig {
             Properties props = load();
             return Boolean.parseBoolean(props.getProperty(KEY_ALWAYS_ON_TOP, "false"));
         } catch (Exception e) {
-            System.err.println("[jclaude-monitor] Failed to read config value: " + e.getMessage());
+            Debug.warn("jclaude-monitor", "Failed to read config value: " + e.getMessage());
             return false;
         }
     }
@@ -164,6 +204,18 @@ public final class AppConfig {
     // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
+
+    /** Returns the stored PBKDF2 salt, generating and recording one in
+     *  {@code props} on first use. The caller is responsible for saving. */
+    private static byte[] loadOrCreateSalt(Properties props) {
+        String stored = props.getProperty(KEY_CRYPTO_SALT);
+        if (stored != null && !stored.isBlank()) {
+            return Base64.getDecoder().decode(stored.trim());
+        }
+        byte[] salt = CryptoUtil.generateSalt();
+        props.setProperty(KEY_CRYPTO_SALT, Base64.getEncoder().encodeToString(salt));
+        return salt;
+    }
 
     /** Reads config.properties into a {@link Properties} object. Returns an empty
      *  Properties if the file does not exist yet. */

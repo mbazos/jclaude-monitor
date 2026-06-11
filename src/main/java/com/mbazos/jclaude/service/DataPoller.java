@@ -2,9 +2,11 @@ package com.mbazos.jclaude.service;
 
 import com.mbazos.jclaude.model.LocalStats;
 import com.mbazos.jclaude.model.WebUsageResult;
+import com.mbazos.jclaude.util.Debug;
 
 import javax.swing.SwingUtilities;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -21,10 +23,10 @@ public class DataPoller {
     private final ScheduledExecutorService scheduler;
     private volatile ClaudeWebClient webClient;  // null if no session configured
     private final LocalDataReader localReader;
-    private final BiConsumer<LocalStats, WebUsageResult> resultHandler;
+    private final BiConsumer<Optional<LocalStats>, WebUsageResult> resultHandler;
 
     public DataPoller(ClaudeWebClient webClient, LocalDataReader localReader,
-                      BiConsumer<LocalStats, WebUsageResult> resultHandler) {
+                      BiConsumer<Optional<LocalStats>, WebUsageResult> resultHandler) {
         this.webClient     = webClient;
         this.localReader   = localReader;
         this.resultHandler = Objects.requireNonNull(resultHandler, "resultHandler must not be null");
@@ -59,11 +61,11 @@ public class DataPoller {
     // -------------------------------------------------------------------------
 
     private void doPoll() {
-        LocalStats stats;
+        Optional<LocalStats> stats;
         try {
             stats = localReader.readStats();
         } catch (Exception e) {
-            stats = null;
+            stats = Optional.empty();
         }
 
         ClaudeWebClient snap = webClient;
@@ -72,13 +74,14 @@ public class DataPoller {
             try {
                 usage = snap.fetch();
             } catch (Exception e) {
-                usage = new WebUsageResult.Unavailable("Fetch error: " + e.getMessage());
+                Debug.log("DataPoller", "Fetch failed: " + e);
+                usage = new WebUsageResult.Unavailable("Network error — will retry in 60s");
             }
         } else {
-            usage = new WebUsageResult.Unavailable("No session configured");
+            usage = new WebUsageResult.Unavailable("Not logged in — click ⚙ to connect claude.ai");
         }
 
-        final LocalStats finalStats = stats;
+        final Optional<LocalStats> finalStats = stats;
         final WebUsageResult finalUsage = usage;
         SwingUtilities.invokeLater(() -> resultHandler.accept(finalStats, finalUsage));
     }

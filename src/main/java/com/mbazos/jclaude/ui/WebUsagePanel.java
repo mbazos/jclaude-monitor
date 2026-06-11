@@ -58,7 +58,7 @@ public class WebUsagePanel extends JPanel {
         add(buildAvailableCard(), CARD_AVAILABLE);
         add(buildUnavailableCard(), CARD_UNAVAILABLE);
 
-        unavailableLabel.setText(" No session key — Settings → Claude.ai Session…");
+        unavailableLabel.setText(" Not logged in — click ⚙ to connect claude.ai");
         cardLayout.show(this, CARD_UNAVAILABLE);
     }
 

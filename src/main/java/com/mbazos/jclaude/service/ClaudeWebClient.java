@@ -3,6 +3,7 @@ package com.mbazos.jclaude.service;
 import com.mbazos.jclaude.json.JsonParser;
 import com.mbazos.jclaude.json.JsonPath;
 import com.mbazos.jclaude.model.WebUsageResult;
+import com.mbazos.jclaude.util.Debug;
 
 import java.io.IOException;
 import java.net.URI;
@@ -24,6 +25,8 @@ public class ClaudeWebClient {
     private static final String URL_TEMPLATE =
             "https://claude.ai/api/organizations/%s/usage";
 
+    // Deliberately a browser UA: the undocumented claude.ai endpoint is served
+    // to browsers, and a Java/custom UA risks being bot-blocked.
     private static final String USER_AGENT =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
@@ -64,15 +67,16 @@ public class ClaudeWebClient {
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
         int status = response.statusCode();
-        System.err.println("[ClaudeWebClient] HTTP " + status + " from " + url);
-        System.err.println("[ClaudeWebClient] Response body: " + response.body());
+        Debug.log("ClaudeWebClient", "HTTP " + status + " from " + url);
+        Debug.log("ClaudeWebClient", "Response body: " + response.body());
 
         if (status == 401 || status == 403) {
             return new WebUsageResult.Unavailable(
-                    "Session expired or invalid (HTTP " + status + ")");
+                    "Session expired — open settings (⚙) and log in again");
         }
         if (status >= 400) {
-            return new WebUsageResult.Unavailable("HTTP " + status);
+            return new WebUsageResult.Unavailable(
+                    "claude.ai returned HTTP " + status + " — will retry");
         }
 
         return parseResponse(response.body());
@@ -82,7 +86,7 @@ public class ClaudeWebClient {
     // Private
     // -------------------------------------------------------------------------
 
-    private WebUsageResult parseResponse(String body) {
+    static WebUsageResult parseResponse(String body) {
         try {
             Object parsed = JsonParser.parse(body);
 
@@ -99,7 +103,7 @@ public class ClaudeWebClient {
             boolean hasWindows     = fiveHUtil != null || sevenDUtil != null;
             boolean hasExtraUsage  = Boolean.TRUE.equals(extraEnabled);
 
-            System.err.println("[ClaudeWebClient] fiveHUtil=" + fiveHUtil
+            Debug.log("ClaudeWebClient", "fiveHUtil=" + fiveHUtil
                     + " sevenDUtil=" + sevenDUtil
                     + " extraEnabled=" + extraEnabled
                     + " extraUtil=" + extraUtil
@@ -109,7 +113,7 @@ public class ClaudeWebClient {
                     + " hasExtraUsage=" + hasExtraUsage);
 
             if (!hasWindows && !hasExtraUsage) {
-                return new WebUsageResult.Unavailable("Unexpected response format");
+                return new WebUsageResult.Unavailable("claude.ai response format not recognized");
             }
 
             // resets_at uses "+00:00" offset notation, not "Z" — requires OffsetDateTime
@@ -128,7 +132,8 @@ public class ClaudeWebClient {
                     Instant.now()
             );
         } catch (Exception e) {
-            return new WebUsageResult.Unavailable("Parse error: " + e.getMessage());
+            Debug.log("ClaudeWebClient", "Parse error: " + e);
+            return new WebUsageResult.Unavailable("Couldn't read usage data from claude.ai");
         }
     }
 

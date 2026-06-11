@@ -5,6 +5,7 @@ import com.mbazos.jclaude.model.LocalStats;
 import com.mbazos.jclaude.model.WebUsageResult;
 import com.mbazos.jclaude.service.ClaudeWebClient;
 import com.mbazos.jclaude.service.DataPoller;
+import com.mbazos.jclaude.util.Debug;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -23,6 +24,7 @@ import java.awt.FlowLayout;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 
 import static com.mbazos.jclaude.ui.Theme.*;
@@ -66,19 +68,19 @@ public class MonitorFrame extends JFrame {
     // Public API
     // -------------------------------------------------------------------------
 
-    public BiConsumer<LocalStats, WebUsageResult> getResultHandler() { return this::onResult; }
+    public BiConsumer<Optional<LocalStats>, WebUsageResult> getResultHandler() { return this::onResult; }
     public void setPoller(DataPoller poller) { this.poller = poller; }
 
     // -------------------------------------------------------------------------
     // Result handler (called on EDT by DataPoller)
     // -------------------------------------------------------------------------
 
-    private void onResult(LocalStats stats, WebUsageResult usage) {
+    private void onResult(Optional<LocalStats> stats, WebUsageResult usage) {
         webUsagePanel.update(usage);
-        if (stats != null) {
-            allTimeLabel.setText(String.format("Sessions: %,d  Messages: %,d",
-                    stats.totalSessions(), stats.totalMessages()));
-        }
+        allTimeLabel.setText(stats
+                .map(s -> String.format("Sessions: %,d  Messages: %,d",
+                        s.totalSessions(), s.totalMessages()))
+                .orElse("Sessions: —  Messages: —"));
         lastSyncLabel.setText("Last sync: " + TIME_FMT.format(Instant.now()));
     }
 
@@ -256,15 +258,8 @@ public class MonitorFrame extends JFrame {
     }
 
     private void runTest() {
-        String sk, orgId;
-        try {
-            sk    = AppConfig.loadSessionKey();
-            orgId = AppConfig.loadSessionOrgId();
-        } catch (Exception e) {
-            settingsStatusLabel.setForeground(RED);
-            settingsStatusLabel.setText("Error loading credentials: " + e.getMessage());
-            return;
-        }
+        String sk    = AppConfig.loadSessionKey();
+        String orgId = AppConfig.loadSessionOrgId();
         if (sk == null || sk.isBlank() || orgId == null || orgId.isBlank()) {
             settingsStatusLabel.setForeground(RED);
             settingsStatusLabel.setText("No credentials — login first.");
@@ -353,7 +348,7 @@ public class MonitorFrame extends JFrame {
         try {
             AppConfig.saveWindowState(getX(), getY(), getWidth(), getHeight(), isAlwaysOnTop());
         } catch (Exception ex) {
-            System.err.println("[jclaude-monitor] Failed to save window state: " + ex.getMessage());
+            Debug.warn("jclaude-monitor", "Failed to save window state: " + ex.getMessage());
         }
     }
 

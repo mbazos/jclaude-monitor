@@ -10,6 +10,7 @@ import com.mbazos.jclaude.ui.MonitorFrame;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 
 /**
@@ -23,20 +24,16 @@ public class Main {
                 AppConfig.ensureConfigDir();
 
                 ClaudeWebClient webClient = null;
-                try {
-                    String sessionKey = AppConfig.loadSessionKey();
-                    String orgId      = AppConfig.loadSessionOrgId();
-                    if (sessionKey != null && orgId != null) {
-                        webClient = new ClaudeWebClient(sessionKey, orgId);
-                    }
-                } catch (Exception e) {
-                    System.err.println("[jclaude-monitor] Failed to load session key: " + e.getMessage());
+                String sessionKey = AppConfig.loadSessionKey();
+                String orgId      = AppConfig.loadSessionOrgId();
+                if (sessionKey != null && orgId != null) {
+                    webClient = new ClaudeWebClient(sessionKey, orgId);
                 }
 
                 LocalDataReader localReader = new LocalDataReader();
                 MonitorFrame frame = new MonitorFrame();
 
-                BiConsumer<LocalStats, WebUsageResult> handler = frame.getResultHandler();
+                BiConsumer<Optional<LocalStats>, WebUsageResult> handler = frame.getResultHandler();
                 DataPoller poller = new DataPoller(webClient, localReader, handler);
 
                 frame.setPoller(poller);
