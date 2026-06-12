@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [master]
-    tags: ['v*']
   pull_request:
 
 jobs:
@@ -17,39 +16,3 @@ jobs:
           java-version: '25'
           cache: maven
       - run: ./mvnw -B verify
-      - uses: actions/upload-artifact@v5
-        with:
-          name: jclaude-monitor-shaded
-          path: target/jclaude-monitor-*-shaded.jar
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    strategy:
-      matrix:
-        # platform = the org.openjfx classifier / javafx.platform value
-        include:
-          - { name: mac-aarch64,   platform: mac-aarch64 }
-          - { name: mac-x86,       platform: mac }
-          - { name: win,           platform: win }
-          - { name: linux-x86,     platform: linux }
-          - { name: linux-aarch64, platform: linux-aarch64 }
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: maven
-      # Cross-build: -Djavafx.platform makes the base JavaFX dependencies
-      # resolve the target platform's natives. The pom's linux-x86 profile
-      # auto-activates on the ubuntu runner (it is OS-activated), so deactivate
-      # it to keep the runner's natives out of the shaded jar.
-      - run: ./mvnw -B -DskipTests -Djavafx.platform=${{ matrix.platform }} -P '!linux-x86' package
-      - run: cp target/jclaude-monitor-*-shaded.jar "jclaude-monitor-${GITHUB_REF_NAME}-${{ matrix.name }}.jar"
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: jclaude-monitor-*-${{ matrix.name }}.jar

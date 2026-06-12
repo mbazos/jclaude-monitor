@@ -19,6 +19,11 @@ import java.util.function.BiConsumer;
 public class Main {
 
     public static void main(String[] args) {
+        // On macOS: mark as accessory (menu-bar) app before AWT initialises so the
+        // JVM process never gets a permanent Dock icon.  Must be set before the first
+        // AWT call (SwingUtilities.invokeLater triggers toolkit init).
+        System.setProperty("apple.awt.UIElement", "true");
+
         SwingUtilities.invokeLater(() -> {
             try {
                 AppConfig.ensureConfigDir();
@@ -37,7 +42,11 @@ public class Main {
                 DataPoller poller = new DataPoller(webClient, localReader, handler);
 
                 frame.setPoller(poller);
-                frame.setVisible(true);
+                // Start hidden when a session is configured and the tray icon is available;
+                // the first poll will auto-show the window if the session turns out to be invalid.
+                if (webClient == null || !frame.isTrayActive()) {
+                    frame.setVisible(true);
+                }
                 poller.start();
 
             } catch (Exception e) {

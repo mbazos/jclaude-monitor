@@ -40,7 +40,8 @@ public final class AppConfig {
     private static final String KEY_WINDOW_Y        = "window.y";
     private static final String KEY_WINDOW_W        = "window.w";
     private static final String KEY_WINDOW_H        = "window.h";
-    private static final String KEY_ALWAYS_ON_TOP   = "window.alwaysOnTop";
+    private static final String KEY_ALWAYS_ON_TOP     = "window.alwaysOnTop";
+    private static final String KEY_MINIMIZE_TO_TRAY  = "window.minimizeToTray";
 
     private AppConfig() {}
 
@@ -199,6 +200,26 @@ public final class AppConfig {
             Debug.warn("jclaude-monitor", "Failed to read config value: " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Returns the stored minimize-to-tray preference, defaulting to {@code false}.
+     */
+    public static boolean loadMinimizeToTray() {
+        try {
+            Properties props = load();
+            return Boolean.parseBoolean(props.getProperty(KEY_MINIMIZE_TO_TRAY, "false"));
+        } catch (Exception e) {
+            Debug.warn("jclaude-monitor", "Failed to read config value: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** Persists the minimize-to-tray preference. */
+    public static void saveMinimizeToTray(boolean value) throws IOException {
+        Properties props = load();
+        props.setProperty(KEY_MINIMIZE_TO_TRAY, String.valueOf(value));
+        save(props);
     }
 
     // -------------------------------------------------------------------------

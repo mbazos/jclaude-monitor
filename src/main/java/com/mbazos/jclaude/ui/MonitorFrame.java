@@ -21,6 +21,7 @@ import javax.swing.UIManager;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.SystemTray;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -36,9 +37,11 @@ public class MonitorFrame extends JFrame {
     private final JLabel        allTimeLabel       = new JLabel("Sessions: —  Messages: —");
     private final JLabel        settingsStatusLabel = new JLabel(" ", SwingConstants.LEFT);
 
-    private JPanel  settingsPanel;
-    private boolean settingsVisible = false;
-    private DataPoller poller;
+    private JPanel          settingsPanel;
+    private boolean         settingsVisible = false;
+    private DataPoller      poller;
+    private TrayIconManager trayManager;
+    private WebUsageResult  lastResult = null;
 
     private static final DateTimeFormatter TIME_FMT =
             DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
@@ -59,7 +62,14 @@ public class MonitorFrame extends JFrame {
             @Override public void windowClosing(java.awt.event.WindowEvent e) {
                 saveWindowState();
                 if (poller != null) poller.shutdown();
+                trayManager.dispose();
                 System.exit(0);
+            }
+
+            @Override public void windowIconified(java.awt.event.WindowEvent e) {
+                if (trayManager.isTrayActive() && AppConfig.loadMinimizeToTray()) {
+                    SwingUtilities.invokeLater(() -> setVisible(false));
+                }
             }
         });
     }
@@ -70,6 +80,7 @@ public class MonitorFrame extends JFrame {
 
     public BiConsumer<Optional<LocalStats>, WebUsageResult> getResultHandler() { return this::onResult; }
     public void setPoller(DataPoller poller) { this.poller = poller; }
+    public boolean isTrayActive() { return trayManager.isTrayActive(); }
 
     // -------------------------------------------------------------------------
     // Result handler (called on EDT by DataPoller)
@@ -77,6 +88,20 @@ public class MonitorFrame extends JFrame {
 
     private void onResult(Optional<LocalStats> stats, WebUsageResult usage) {
         webUsagePanel.update(usage);
+        trayManager.update(usage);
+
+        // Auto-show window when session becomes unavailable while the window is hidden.
+        // Only trigger on the first unavailable result after a working session (or on startup
+        // if credentials were present but already invalid) — not on every 60-second poll.
+        boolean wasAvailable   = lastResult instanceof WebUsageResult.Available;
+        boolean nowUnavailable = usage   instanceof WebUsageResult.Unavailable;
+        if (nowUnavailable && (lastResult == null || wasAvailable) && !isVisible()) {
+            setVisible(true);
+            setState(JFrame.NORMAL);
+            toFront();
+        }
+        lastResult = usage;
+
         allTimeLabel.setText(stats
                 .map(s -> String.format("Sessions: %,d  Messages: %,d",
                         s.totalSessions(), s.totalMessages()))
@@ -104,6 +129,8 @@ public class MonitorFrame extends JFrame {
         bottom.add(buildStatusBar());
 
         getContentPane().add(bottom, BorderLayout.SOUTH);
+
+        trayManager = new TrayIconManager(this);
     }
 
     private JPanel buildSettingsPanel() {
@@ -193,6 +220,27 @@ public class MonitorFrame extends JFrame {
         checkRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
         checkRow.add(alwaysOnTopCheck);
         panel.add(checkRow);
+
+        if (SystemTray.isSupported()) {
+            JCheckBox minimizeToTrayCheck = new JCheckBox("Minimize to Tray");
+            minimizeToTrayCheck.setFont(MONO_SMALL);
+            minimizeToTrayCheck.setBackground(BG_DARK);
+            minimizeToTrayCheck.setForeground(FG_SECONDARY);
+            minimizeToTrayCheck.setFocusPainted(false);
+            minimizeToTrayCheck.setSelected(AppConfig.loadMinimizeToTray());
+            minimizeToTrayCheck.addActionListener(e -> {
+                try {
+                    AppConfig.saveMinimizeToTray(minimizeToTrayCheck.isSelected());
+                } catch (Exception ex) {
+                    Debug.warn("jclaude-monitor", "Failed to save minimize-to-tray: " + ex.getMessage());
+                }
+            });
+            JPanel minimizeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            minimizeRow.setBackground(BG_DARK);
+            minimizeRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+            minimizeRow.add(minimizeToTrayCheck);
+            panel.add(minimizeRow);
+        }
 
         return panel;
     }
@@ -309,6 +357,9 @@ public class MonitorFrame extends JFrame {
                 if (ok && poller != null) {
                     poller.updateWebClient(c);
                     poller.refreshNow();
+                    if (trayManager.isTrayActive()) {
+                        setVisible(false);
+                    }
                 }
             });
         }, "session-test");

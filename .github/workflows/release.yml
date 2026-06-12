@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: mac-aarch64
+            package-type: dmg
+          - os: macos-13
+            label: mac-x86_64
+            package-type: dmg
+          - os: windows-latest
+            label: win-x86_64
+            package-type: msi
+          - os: ubuntu-latest
+            label: linux-x86_64
+            package-type: deb
+          - os: ubuntu-24.04-arm
+            label: linux-aarch64
+            package-type: deb
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build shaded JAR
+        shell: bash
+        run: ./mvnw -B -DskipTests package
+
+      - name: Get version and JAR name
+        id: vars
+        shell: bash
+        run: |
+          APP_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "main_jar=jclaude-monitor-${APP_VERSION}-shaded.jar" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y fakeroot binutils
+
+      - name: Install WiX Toolset
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install wixtoolset -y
+          $wixPath = (Get-ChildItem "C:\Program Files (x86)\WiX Toolset*" -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1).FullName
+          "$wixPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Run jpackage
+        shell: bash
+        run: |
+          jpackage \
+            --name "jclaude-monitor" \
+            --app-version "${{ steps.vars.outputs.app_version }}" \
+            --input target \
+            --main-jar "${{ steps.vars.outputs.main_jar }}" \
+            --main-class com.mbazos.jclaude.Main \
+            --type ${{ matrix.package-type }} \
+            --dest dist \
+            --vendor "mbazos" \
+            --description "Claude AI usage monitor"
+
+      - name: Rename artifact with platform label
+        shell: bash
+        run: |
+          for f in dist/*; do
+            ext="${f##*.}"
+            mv "$f" "dist/jclaude-monitor-${{ steps.vars.outputs.app_version }}-${{ matrix.label }}.${ext}"
+          done
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
