@@ -16,9 +16,6 @@ jobs:
           - os: macos-latest
             label: mac-aarch64
             package-type: dmg
-          - os: macos-13
-            label: mac-x86_64
-            package-type: dmg
           - os: windows-latest
             label: win-x86_64
             package-type: msi
@@ -40,15 +37,24 @@ jobs:
           java-version: '25'
           cache: maven
 
+      - name: Set Maven wrapper command
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "MVN=mvnw.cmd" >> "$GITHUB_ENV"
+          else
+            echo "MVN=./mvnw" >> "$GITHUB_ENV"
+          fi
+
       - name: Build shaded JAR
         shell: bash
-        run: ./mvnw -B -DskipTests package
+        run: $MVN -B -DskipTests package
 
       - name: Get version and JAR name
         id: vars
         shell: bash
         run: |
-          APP_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
+          APP_VERSION=$($MVN help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
           echo "main_jar=jclaude-monitor-${APP_VERSION}-shaded.jar" >> "$GITHUB_OUTPUT"
 
