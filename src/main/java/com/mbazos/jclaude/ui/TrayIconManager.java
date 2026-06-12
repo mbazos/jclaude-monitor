@@ -32,7 +32,7 @@ public class TrayIconManager {
     private final JFrame   owner;
     private final TrayIcon trayIcon;
 
-    public TrayIconManager(JFrame owner) {
+    public TrayIconManager(JFrame owner, Runnable onQuit) {
         this.owner = owner;
 
         TrayIcon icon = null;
@@ -42,7 +42,7 @@ public class TrayIconManager {
             MenuItem showItem = new MenuItem("Show Window");
             showItem.addActionListener(e -> SwingUtilities.invokeLater(this::showWindow));
             MenuItem exitItem = new MenuItem("Exit");
-            exitItem.addActionListener(e -> System.exit(0));
+            exitItem.addActionListener(e -> onQuit.run());
             menu.add(showItem);
             menu.addSeparator();
             menu.add(exitItem);

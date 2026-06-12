@@ -60,10 +60,11 @@ public class MonitorFrame extends JFrame {
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new java.awt.event.WindowAdapter() {
             @Override public void windowClosing(java.awt.event.WindowEvent e) {
-                saveWindowState();
-                if (poller != null) poller.shutdown();
-                trayManager.dispose();
-                System.exit(0);
+                if (trayManager.isTrayActive()) {
+                    setVisible(false);
+                } else {
+                    quit();
+                }
             }
 
             @Override public void windowIconified(java.awt.event.WindowEvent e) {
@@ -81,6 +82,13 @@ public class MonitorFrame extends JFrame {
     public BiConsumer<Optional<LocalStats>, WebUsageResult> getResultHandler() { return this::onResult; }
     public void setPoller(DataPoller poller) { this.poller = poller; }
     public boolean isTrayActive() { return trayManager.isTrayActive(); }
+
+    public void quit() {
+        saveWindowState();
+        if (poller != null) poller.shutdown();
+        trayManager.dispose();
+        System.exit(0);
+    }
 
     // -------------------------------------------------------------------------
     // Result handler (called on EDT by DataPoller)
@@ -130,7 +138,7 @@ public class MonitorFrame extends JFrame {
 
         getContentPane().add(bottom, BorderLayout.SOUTH);
 
-        trayManager = new TrayIconManager(this);
+        trayManager = new TrayIconManager(this, this::quit);
     }
 
     private JPanel buildSettingsPanel() {
