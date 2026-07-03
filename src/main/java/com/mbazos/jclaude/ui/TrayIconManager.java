@@ -19,6 +19,7 @@ import java.awt.TrayIcon;
 import java.awt.image.BufferedImage;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 
 import static com.mbazos.jclaude.ui.Theme.GREEN;
 import static com.mbazos.jclaude.ui.Theme.ORANGE;
@@ -111,11 +112,18 @@ public class TrayIconManager {
         // On macOS UIElement apps the process is not the active application, so toFront()
         // alone is ignored by the window manager. Briefly setting alwaysOnTop forces the
         // window to the front, then we restore the user's original preference.
+        // A short Timer delay is required because the next EDT cycle fires before the OS
+        // has finished raising the window, so turning off alwaysOnTop immediately still
+        // loses the race against other foreground windows.
         boolean wasAlwaysOnTop = owner.isAlwaysOnTop();
         if (!wasAlwaysOnTop) owner.setAlwaysOnTop(true);
         owner.toFront();
         owner.requestFocus();
-        if (!wasAlwaysOnTop) SwingUtilities.invokeLater(() -> owner.setAlwaysOnTop(false));
+        if (!wasAlwaysOnTop) {
+            Timer t = new Timer(150, ev -> owner.setAlwaysOnTop(false));
+            t.setRepeats(false);
+            t.start();
+        }
     }
 
     private static double computeMaxPct(WebUsageResult.Available a) {
