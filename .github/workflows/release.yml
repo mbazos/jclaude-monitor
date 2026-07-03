@@ -53,6 +53,7 @@ jobs:
       - name: Run jpackage
         shell: bash
         run: |
+          ICON_EXT=$([[ "$RUNNER_OS" == "macOS" ]] && echo "icns" || echo "png")
           jpackage \
             --name "jclaude-monitor" \
             --app-version "${{ steps.vars.outputs.app_version }}" \
@@ -62,7 +63,8 @@ jobs:
             --type ${{ matrix.package-type }} \
             --dest dist \
             --vendor "mbazos" \
-            --description "Claude AI usage monitor"
+            --description "Claude AI usage monitor" \
+            --icon "packaging/icon.${ICON_EXT}"
 
       - name: Rename artifact with platform label
         shell: bash
