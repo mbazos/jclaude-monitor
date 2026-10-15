@@ -1,6 +1,9 @@
 package com.mbazos.jclaude.ui;
 
-import javafx.animation.PauseTransition;
+import com.mbazos.jclaude.util.Debug;
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.embed.swing.JFXPanel;
@@ -34,6 +37,11 @@ import static com.mbazos.jclaude.ui.Theme.*;
 public class BrowserLoginDialog extends JDialog {
 
     private static final String LOGIN_URL = "https://claude.ai/login";
+
+    /** How often to check the cookie store for the session key after login. */
+    private static final Duration COOKIE_POLL_INTERVAL = Duration.millis(500);
+    /** Give up waiting for the session key after this many polls (~30s). */
+    private static final int      COOKIE_POLL_MAX      = 60;
 
     private final JLabel         statusLabel   = new JLabel("Loading claude.ai…", SwingConstants.LEFT);
     private final JButton        cancelButton  = new JButton("Cancel");
@@ -129,11 +137,32 @@ public class BrowserLoginDialog extends JDialog {
             updateStatus("Log in to your Claude account…");
         } else if (isClaudeHome(url) && extracting.compareAndSet(false, true)) {
             updateStatus("Extracting credentials…");
-            // Wait for the login response's Set-Cookie header to be committed to the store
-            PauseTransition wait = new PauseTransition(Duration.millis(1200));
-            wait.setOnFinished(e -> extractCredentials(engine));
-            wait.play();
+            awaitSessionKey(engine);
         }
+    }
+
+    /**
+     * Polls the cookie store until the sessionKey cookie appears, then extracts credentials.
+     * The cookie is not set at the moment we first land on a claude.ai page: SSO logins
+     * (e.g. Okta via /sso-callback) only receive it after a code exchange that completes
+     * several seconds later, so a fixed delay is not reliable.
+     */
+    private void awaitSessionKey(WebEngine engine) {
+        int[] polls = {0};
+        Timeline poll = new Timeline();
+        poll.getKeyFrames().add(new KeyFrame(COOKIE_POLL_INTERVAL, e -> {
+            if (findSessionKeyInCookieStore() != null) {
+                poll.stop();
+                extractCredentials(engine);
+            } else if (++polls[0] >= COOKIE_POLL_MAX) {
+                poll.stop();
+                Debug.warn("jclaude-monitor", "sessionKey cookie never appeared in the cookie store");
+                extracting.set(false);
+                updateError("Session key not captured — close and use manual entry instead.");
+            }
+        }));
+        poll.setCycleCount(Animation.INDEFINITE);
+        poll.play();
     }
 
     private static boolean isLoginOrSignup(String url) {
@@ -143,6 +172,7 @@ public class BrowserLoginDialog extends JDialog {
             return path.equals("/login")     || path.startsWith("/login/")
                 || path.equals("/signup")    || path.startsWith("/signup/")
                 || path.startsWith("/verify")
+            || path.startsWith("/sso-callback")
                 || path.startsWith("/magic-link");
         } catch (URISyntaxException e) {
             return url.contains("/login") || url.contains("/signup");
@@ -286,6 +316,13 @@ public class BrowserLoginDialog extends JDialog {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private void updateError(String message) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setForeground(RED);
+            statusLabel.setText(message);
+        });
+    }
 
     private void updateStatus(String message) {
         SwingUtilities.invokeLater(() -> {
